@@ -10,7 +10,7 @@ import (
 	cli "github.com/urfave/cli/v3"
 )
 
-func cmdConstructor(env string, flags []int64) string {
+func cmdConstructor(env string, flags []int64, yaml string) string {
 	ram := flags[0]
 	cpu := flags[1]
 
@@ -19,9 +19,9 @@ func cmdConstructor(env string, flags []int64) string {
 	return cmd
 }
 
-func startEnv(env string, flags []int64) error {
+func startEnv(env string, flags []int64, yaml string) error {
 	// Execute the command to start the environment
-	cmdStr := cmdConstructor(env, flags)
+	cmdStr := cmdConstructor(env, flags, yaml)
 	cmd := exec.Command("bash", "-c", cmdStr)
 
 	// Connect stdout and stderr to the current process
@@ -59,6 +59,11 @@ func main() {
 						Value:    2,
 						Required: false,
 					},
+					&cli.StringFlag{
+						Name:     "yaml",
+						Usage:    "Path to YAML file for a custom environment config",
+						Required: false,
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					args := cmd.Args()
@@ -71,7 +76,7 @@ func main() {
 					cpu := cmd.Int("cpu")
 
 					fmt.Printf("Spinning up devbox with %s environment (RAM: %d MB, CPU: %d vCPU)...\n", env, ram, cpu)
-					startEnv(env, []int64{int64(ram), int64(cpu)})
+					startEnv(env, []int64{int64(ram), int64(cpu)}, cmd.String("yaml"))
 					return nil
 				},
 			},
