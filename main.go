@@ -10,13 +10,31 @@ import (
 	cli "github.com/urfave/cli/v3"
 )
 
-func startEnv(env string) string {
-	qemuCmd := exec.Command("sh", "-c", fmt.Sprintf("sleep 3", env))
-	if err := qemuCmd.Run(); err != nil {
-		log.Printf("Error running command: %v", err)
-		return "error"
+func cmdConstructor(env string, flags []int64) string {
+	ram := flags[0]
+	cpu := flags[1]
+
+	cmd := fmt.Sprintf("sudo qemu-system-x86_64 -enable-kvm -cpu host -m %dM -smp %d -nographic -kernel images/%s/%s.bzImage -initrd images/%s/%s.initrd -append \"console=ttyS0 root=/dev/vda rw\" -drive file=images/%s/%s.img,format=raw,if=virtio -fsdev local,id=fsdev0,path=$PWD,security_model=none -device virtio-9p-pci,fsdev=fsdev0,mount_tag=hostshare -machine q35,accel=kvm", ram, cpu, env, env, env, env, env, env)
+
+	return cmd
+}
+
+func startEnv(env string, flags []int64) error {
+	// Execute the command to start the environment
+	cmdStr := cmdConstructor(env, flags)
+	cmd := exec.Command("bash", "-c", cmdStr)
+
+	// Connect stdout and stderr to the current process
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	// Run the command and wait for it to complete
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to start environment: %v", err)
 	}
-	return qemuCmd.String()
+
+	return nil
 }
 
 func main() {
@@ -28,6 +46,20 @@ func main() {
 				Name:    "run",
 				Aliases: []string{"r"},
 				Usage:   "run <environment> - spin up a new devbox with specified environment",
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:     "ram",
+						Usage:    "RAM size in MB, default value: 2048",
+						Value:    2048,
+						Required: false,
+					},
+					&cli.IntFlag{
+						Name:     "cpu",
+						Usage:    "CPU cores (vCPU), default value: 2",
+						Value:    2,
+						Required: false,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					args := cmd.Args()
 					if args.Len() == 0 {
@@ -35,8 +67,11 @@ func main() {
 					}
 
 					env := args.Get(0)
-					fmt.Printf("Spinning up devbox with %s environment...\n", env)
-					fmt.Printf(startEnv(env))
+					ram := cmd.Int("ram")
+					cpu := cmd.Int("cpu")
+
+					fmt.Printf("Spinning up devbox with %s environment (RAM: %d MB, CPU: %d vCPU)...\n", env, ram, cpu)
+					startEnv(env, []int64{int64(ram), int64(cpu)})
 					return nil
 				},
 			},
