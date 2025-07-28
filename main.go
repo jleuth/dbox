@@ -1,14 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 
 	cli "github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func cmdConstructor(env string, flags []int64, yaml string) string {
@@ -38,27 +41,77 @@ func startEnv(env string, flags []int64, yaml string) error {
 
 	cmd.Stdin = os.Stdin
 
+	// Set up raw terminal mode for proper handling of escape sequences
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		log.Printf("Warning: could not set raw mode: %v", err)
+	}
+	defer func() {
+		if oldState != nil {
+			term.Restore(int(os.Stdin.Fd()), oldState)
+		}
+	}()
+
+	// Handle Ctrl+C gracefully
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		if oldState != nil {
+			term.Restore(int(os.Stdin.Fd()), oldState)
+		}
+		os.Exit(0)
+	}()
+
 	// Run the command and wait for it to complete
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start environment: %v", err)
 	}
 
+	// Use raw byte copying instead of line-based scanning for real-time output
 	go func() {
-		scanner := bufio.NewScanner(stdoutPipe)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "<DBOX:DETACH>" {
-				fmt.Println("Guest requested detach, stopping output...")
-				return // This stops output but leaves guest running
+		buf := make([]byte, 1024)
+		detachSeq := []byte("<DBOX:DETACH>")
+		var accumulated []byte
+		
+		for {
+			n, err := stdoutPipe.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("Error reading stdout: %v", err)
+				}
+				return
 			}
-			fmt.Printf("%s\n", line) // Forward output to stdout
+			
+			// Check for detach sequence
+			accumulated = append(accumulated, buf[:n]...)
+			if len(accumulated) > len(detachSeq) {
+				accumulated = accumulated[len(accumulated)-len(detachSeq):]
+			}
+			
+			if len(accumulated) >= len(detachSeq) && 
+			   string(accumulated[len(accumulated)-len(detachSeq):]) == string(detachSeq) {
+				fmt.Println("\nGuest requested detach, stopping output...")
+				return
+			}
+			
+			// Write output immediately without buffering
+			os.Stdout.Write(buf[:n])
 		}
 	}()
 
 	go func() {
-		scanner := bufio.NewScanner(stderrPipe)
-		for scanner.Scan() {
-			fmt.Fprintf(os.Stderr, "GUEST ERROR: %s\n", scanner.Text())
+		buf := make([]byte, 1024)
+		for {
+			n, err := stderrPipe.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("Error reading stderr: %v", err)
+				}
+				return
+			}
+			// Write stderr output immediately
+			os.Stderr.Write(buf[:n])
 		}
 	}()
 
