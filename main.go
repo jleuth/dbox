@@ -75,6 +75,30 @@ func main() {
 					return nil
 				},
 			},
+			// {
+			// 	Name:    "fetch",
+			// 	Aliases: []string{"f"},
+			// 	Usage:   "fetch <environment> <save_directory>- fetch the latest devbox image for the specified environment",
+			// 	Flags: []cli.Flag{
+			// 		&cli.StringFlag{
+			// 			Name:     "env",
+			// 			Usage:    "Environment to fetch (e.g., go, rust, node, python)",
+			// 			Required: true,
+			// 		},
+			// 		&cli.StringFlag{
+			// 			Name:     "save_directory",
+			// 			Usage:    "Directory to save the fetched image",
+			// 			Required: true,
+			// 		},
+			// 	},
+			// 	Action: func(ctx context.Context, c *cli.Command) error {
+			// 		env := c.String("env")
+			// 		saveDir := c.String("save_directory")
+
+			// 		fmt.Printf("Fetching %s environment to %s\n", env, saveDir)
+			// 		return nil
+			// 	},
+			// },
 		},
 	}
 
