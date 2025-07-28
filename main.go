@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -25,15 +26,48 @@ func startEnv(env string, flags []int64, yaml string) error {
 	cmd := exec.Command("bash", "-c", cmdStr)
 
 	// Connect stdout and stderr to the current process
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %v", err)
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %v", err)
+	}
+
 	cmd.Stdin = os.Stdin
 
 	// Run the command and wait for it to complete
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start environment: %v", err)
 	}
 
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "<DBOX:DETACH>" {
+				fmt.Println("Guest requested detach, stopping output...")
+				return // This stops output but leaves guest running
+			}
+			fmt.Printf("%s\n", line) // Forward output to stdout
+		}
+	}()
+
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			fmt.Fprintf(os.Stderr, "GUEST ERROR: %s\n", scanner.Text())
+		}
+	}()
+
+	// Wait till QEMU exits
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("devbox exited with error: %v", err)
+	}
+
+	fmt.Println("Devbox shut down successfully.")
 	return nil
 }
 
