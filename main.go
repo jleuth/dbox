@@ -320,14 +320,43 @@ func main() {
 					if args.Len() == 0 {
 						return fmt.Errorf("please specify an environment: go, rust, node, python, etc")
 					}
-
 					env := args.Get(0)
 					ram := cmd.Int("ram")
 					cpu := cmd.Int("cpu")
-
 					fmt.Printf("Spinning up devbox with %s environment (RAM: %d MB, CPU: %d vCPU)...\n", env, ram, cpu)
 					startEnv(env, []int64{int64(ram), int64(cpu)}, cmd.String("yaml"))
 					return nil
+				},
+			},
+			{
+				Name:  "ps",
+				Usage: "List running devbox session IDs",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					sessions, err := findRunningSessions()
+					if err != nil {
+						return fmt.Errorf("error finding sessions: %v", err)
+					}
+					if len(sessions) == 0 {
+						fmt.Println("No running devbox sessions.")
+						return nil
+					}
+					fmt.Println("Running devbox session IDs:")
+					for _, id := range sessions {
+						fmt.Println(id)
+					}
+					return nil
+				},
+			},
+			{
+				Name:  "attach",
+				Usage: "attach <sessionID> - Reattach to a running devbox session",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					args := cmd.Args()
+					if args.Len() == 0 {
+						return fmt.Errorf("please provide a session ID to attach to (see 'dbox ps')")
+					}
+					sessionID := args.Get(0)
+					return attachToSession(sessionID)
 				},
 			},
 			// {
